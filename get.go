@@ -9,12 +9,15 @@ import (
 )
 
 const (
-	frontendAssetName = "sessiondb-frontend-build.tar.gz"
-	checksumsName     = "checksums.txt"
+	frontendAssetName       = "sessiondb-frontend-build.tar.gz"
+	backendChecksumsName    = "checksums.txt"
+	frontendChecksumsName   = "checksums-frontend.txt"
 )
 
-// get installs the given SessionDB version from GitHub Releases (sessiondb/service) into installRoot.
-// It downloads backend and frontend tarballs, verifies checksums, extracts under versions/<tag>/, writes setup.sh and sessiondb.yaml, and updates the current symlink.
+// get installs the given SessionDB version from GitHub Releases into installRoot.
+// It downloads backend from sessiondb/service and frontend from sessiondb/client for the same tag,
+// verifies their checksums using the respective checksum files, extracts under versions/<tag>/,
+// writes setup.sh and sessiondb.yaml, and updates the current symlink.
 func get(version string, destDir string) error {
 	installRoot := getInstallRoot(destDir)
 	if installRoot != destDir {
@@ -23,25 +26,34 @@ func get(version string, destDir string) error {
 	}
 	installRoot, _ = filepath.Abs(installRoot)
 
-	var release *githubRelease
+	var backendRelease *githubRelease
+	var frontendRelease *githubRelease
 	var err error
 	if version == "" || strings.ToLower(version) == "latest" {
 		if verbose {
 			fmt.Fprintf(os.Stderr, "[verbose] fetching latest release\n")
 		}
-		release, err = fetchLatestRelease()
+		backendRelease, err = fetchLatestReleaseFrom(sessiondbServiceRepo)
 		if err != nil {
 			return err
 		}
-		version = release.TagName
+		version = backendRelease.TagName
+		frontendRelease, err = fetchReleaseByTagFrom(sessiondbClientRepo, version)
+		if err != nil {
+			return fmt.Errorf("frontend release %s not found in %s: %w", version, sessiondbClientRepo, err)
+		}
 	} else {
 		version = normalizeTag(version)
 		if verbose {
 			fmt.Fprintf(os.Stderr, "[verbose] fetching release %s\n", version)
 		}
-		release, err = fetchReleaseByTag(version)
+		backendRelease, err = fetchReleaseByTagFrom(sessiondbServiceRepo, version)
 		if err != nil {
-			return err
+			return fmt.Errorf("backend release %s not found in %s: %w", version, sessiondbServiceRepo, err)
+		}
+		frontendRelease, err = fetchReleaseByTagFrom(sessiondbClientRepo, version)
+		if err != nil {
+			return fmt.Errorf("frontend release %s not found in %s: %w", version, sessiondbClientRepo, err)
 		}
 	}
 
@@ -51,15 +63,17 @@ func get(version string, destDir string) error {
 	}
 
 	backendName := backendAssetName()
-	backendURL := findAssetURL(release, backendName)
-	frontendURL := findAssetURL(release, frontendAssetName)
-	checksumsURL := findAssetURL(release, checksumsName)
+	backendURL := findAssetURL(backendRelease, backendName)
+	backendChecksumsURL := findAssetURL(backendRelease, backendChecksumsName)
+
+	frontendURL := findAssetURL(frontendRelease, frontendAssetName)
+	frontendChecksumsURL := findAssetURL(frontendRelease, frontendChecksumsName)
 
 	if backendURL == "" {
-		return fmt.Errorf("asset %s not found in release %s (platform %s/%s)", backendName, version, runtime.GOOS, runtime.GOARCH)
+		return fmt.Errorf("asset %s not found in release %s of %s (platform %s/%s)", backendName, version, sessiondbServiceRepo, runtime.GOOS, runtime.GOARCH)
 	}
 	if frontendURL == "" {
-		return fmt.Errorf("asset %s not found in release %s", frontendAssetName, version)
+		return fmt.Errorf("asset %s not found in release %s of %s", frontendAssetName, version, sessiondbClientRepo)
 	}
 
 	// Create version dir and subdirs
@@ -76,10 +90,16 @@ func get(version string, destDir string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	checksumsPath := filepath.Join(tmpDir, checksumsName)
-	if checksumsURL != "" {
-		if _, err := downloadAsset(checksumsURL, checksumsPath); err != nil {
-			return fmt.Errorf("download checksums: %w", err)
+	backendChecksumsPath := filepath.Join(tmpDir, backendChecksumsName)
+	if backendChecksumsURL != "" {
+		if _, err := downloadAsset(backendChecksumsURL, backendChecksumsPath); err != nil {
+			return fmt.Errorf("download backend checksums: %w", err)
+		}
+	}
+	frontendChecksumsPath := filepath.Join(tmpDir, frontendChecksumsName)
+	if frontendChecksumsURL != "" {
+		if _, err := downloadAsset(frontendChecksumsURL, frontendChecksumsPath); err != nil {
+			return fmt.Errorf("download frontend checksums: %w", err)
 		}
 	}
 
@@ -89,8 +109,8 @@ func get(version string, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("download backend: %w", err)
 	}
-	if checksumsURL != "" {
-		f, _ := os.Open(checksumsPath)
+	if backendChecksumsURL != "" {
+		f, _ := os.Open(backendChecksumsPath)
 		checksums, _ := parseChecksums(f)
 		f.Close()
 		if want, ok := checksums[backendName]; ok && want != "" {
@@ -99,7 +119,7 @@ func get(version string, destDir string) error {
 			}
 		}
 	} else if verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] no checksums.txt, skipping backend verification (sha256: %s)\n", backendSHA)
+		fmt.Fprintf(os.Stderr, "[verbose] no backend checksums, skipping backend verification (sha256: %s)\n", backendSHA)
 	}
 	if err := extractTarGzip(backendPath, filepath.Join(versionDir, "server")); err != nil {
 		return fmt.Errorf("extract backend: %w", err)
@@ -111,8 +131,8 @@ func get(version string, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("download frontend: %w", err)
 	}
-	if checksumsURL != "" {
-		f, _ := os.Open(checksumsPath)
+	if frontendChecksumsURL != "" {
+		f, _ := os.Open(frontendChecksumsPath)
 		checksums, _ := parseChecksums(f)
 		f.Close()
 		if want, ok := checksums[frontendAssetName]; ok && want != "" {
@@ -121,7 +141,7 @@ func get(version string, destDir string) error {
 			}
 		}
 	} else if verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] no checksums.txt, skipping frontend verification (sha256: %s)\n", frontendSHA)
+		fmt.Fprintf(os.Stderr, "[verbose] no frontend checksums, skipping frontend verification (sha256: %s)\n", frontendSHA)
 	}
 	if err := extractTarGzip(frontendPath, filepath.Join(versionDir, "ui")); err != nil {
 		return fmt.Errorf("extract frontend: %w", err)

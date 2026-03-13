@@ -16,8 +16,11 @@ import (
 )
 
 const (
-	// sessiondbServiceRepo is the GitHub repo for SessionDB backend+frontend releases.
-	sessiondbServiceRepo    = "sessiondb/service"
+	// sessiondbServiceRepo is the GitHub repo for SessionDB backend releases.
+	sessiondbServiceRepo = "sessiondb/service"
+	// sessiondbClientRepo is the GitHub repo for SessionDB UI releases.
+	sessiondbClientRepo = "sessiondb/client"
+
 	githubReleasesTagURL    = "https://api.github.com/repos/%s/releases/tags/%s"
 	githubReleasesLatestURL = "https://api.github.com/repos/%s/releases/latest"
 )
@@ -38,10 +41,10 @@ func backendAssetName() string {
 	return fmt.Sprintf("sessiondb-backend-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 }
 
-// fetchReleaseByTag returns the release for the given tag (e.g. v1.0.1 or 1.0.1).
-func fetchReleaseByTag(tag string) (*githubRelease, error) {
+// fetchReleaseByTagFrom returns the release for the given tag (e.g. v1.0.1 or 1.0.1) from the given repo.
+func fetchReleaseByTagFrom(repo, tag string) (*githubRelease, error) {
 	tag = normalizeTag(tag)
-	url := fmt.Sprintf(githubReleasesTagURL, sessiondbServiceRepo, tag)
+	url := fmt.Sprintf(githubReleasesTagURL, repo, tag)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -50,14 +53,14 @@ func fetchReleaseByTag(tag string) (*githubRelease, error) {
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch release: %w", err)
+		return nil, fmt.Errorf("fetch release for %s: %w", repo, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("release %s not found for %s", tag, sessiondbServiceRepo)
+		return nil, fmt.Errorf("release %s not found for %s", tag, repo)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("release API: %s", resp.Status)
+		return nil, fmt.Errorf("release API for %s: %s", repo, resp.Status)
 	}
 	var r githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
@@ -66,9 +69,9 @@ func fetchReleaseByTag(tag string) (*githubRelease, error) {
 	return &r, nil
 }
 
-// fetchLatestRelease returns the latest release (by tag).
-func fetchLatestRelease() (*githubRelease, error) {
-	url := fmt.Sprintf(githubReleasesLatestURL, sessiondbServiceRepo)
+// fetchLatestReleaseFrom returns the latest release (by tag) from the given repo.
+func fetchLatestReleaseFrom(repo string) (*githubRelease, error) {
+	url := fmt.Sprintf(githubReleasesLatestURL, repo)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -77,17 +80,27 @@ func fetchLatestRelease() (*githubRelease, error) {
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch latest release: %w", err)
+		return nil, fmt.Errorf("fetch latest release for %s: %w", repo, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("latest release API: %s", resp.Status)
+		return nil, fmt.Errorf("latest release API for %s: %s", repo, resp.Status)
 	}
 	var r githubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// fetchReleaseByTag is kept for callers that only care about the backend (service) repo.
+func fetchReleaseByTag(tag string) (*githubRelease, error) {
+	return fetchReleaseByTagFrom(sessiondbServiceRepo, tag)
+}
+
+// fetchLatestRelease is kept for callers that only care about the backend (service) repo.
+func fetchLatestRelease() (*githubRelease, error) {
+	return fetchLatestReleaseFrom(sessiondbServiceRepo)
 }
 
 func normalizeTag(tag string) string {
