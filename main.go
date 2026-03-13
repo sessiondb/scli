@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 )
 
+// verbose is set by -v/--verbose on install and get; enables detailed logs.
+var verbose bool
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -27,20 +30,28 @@ func main() {
 		fs := flag.NewFlagSet("install", flag.ExitOnError)
 		workDir := fs.String("workdir", "", "Extract to this directory (default: <config-dir>/sessiondb-install)")
 		configDir := fs.String("config-dir", "", "Config directory for default workdir")
+		verboseFlag := fs.Bool("verbose", false, "Print detailed logs")
+		verboseShort := fs.Bool("v", false, "Print detailed logs (short)")
 		_ = fs.Parse(args)
+		verbose = *verboseFlag || *verboseShort
 		version := ""
 		if fs.NArg() > 0 {
 			version = fs.Arg(0)
 		}
 		err = runInstall(version, *workDir, *configDir)
 	case "get":
+		fs := flag.NewFlagSet("get", flag.ExitOnError)
+		verboseFlag := fs.Bool("verbose", false, "Print detailed logs")
+		verboseShort := fs.Bool("v", false, "Print detailed logs (short)")
+		_ = fs.Parse(args)
+		verbose = *verboseFlag || *verboseShort
 		version := ""
 		workDir := "."
-		if len(args) >= 1 {
-			version = args[0]
+		if fs.NArg() >= 1 {
+			version = fs.Arg(0)
 		}
-		if len(args) >= 2 {
-			workDir = args[1]
+		if fs.NArg() >= 2 {
+			workDir = fs.Arg(1)
 		}
 		if version == "" {
 			fmt.Fprintln(os.Stderr, "Usage: scli get <version> [workdir]")

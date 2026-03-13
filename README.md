@@ -42,8 +42,8 @@ go build -o scli .
 | Command | Description |
 |--------|-------------|
 | **scli init** | Interactive prompts for DB/Redis, generates `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN`, saves `.env` and `config.yaml` |
-| **scli install \<version\>** | Download and extract SessionDB binaries (e.g. `scli install v1.0.1`) |
-| **scli get \<version\> [workdir]** | Same as install; extracts to `workdir/sessiondb/` (default: current dir) |
+| **scli install \<version\>** | Download and extract SessionDB binaries (e.g. `scli install v1.0.1`). Use `-v` or `--verbose` for detailed logs. |
+| **scli get \<version\> [workdir]** | Same as install; extracts to `workdir/sessiondb/` (default: current dir). Use `-v` or `--verbose` for detailed logs. |
 | **scli run \<version\> [workdir]** | Run server+UI (get if needed; injects env from sessiondb.yaml in the bundle) |
 | **scli migrate** | POST `/v1/migrate` with `X-Migrate-Token` from config (run after deploy) |
 | **scli status** | Check if server is reachable (GET /health) |

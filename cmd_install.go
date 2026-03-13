@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/sessiondb/scli/internal/config"
 )
@@ -14,7 +13,7 @@ func runInstall(version string, workDir string, configDir string) error {
 	if version == "" {
 		return fmt.Errorf("version required (e.g. 1.0.1 or v1.0.1)")
 	}
-	version = strings.TrimPrefix(version, "v")
+	// Pass version as-is to get() so both "releases/v0.0.1/binaries/" and "releases/0.0.1/binaries/" are tried
 	if workDir == "" {
 		if configDir != "" {
 			workDir = filepath.Join(configDir, "sessiondb-install")
