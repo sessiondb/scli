@@ -42,12 +42,24 @@ go build -o scli .
 | Command | Description |
 |--------|-------------|
 | **scli init** | Interactive prompts for DB/Redis, generates `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN`, saves `.env` and `config.yaml` |
-| **scli install \<version\>** | Download and extract SessionDB binaries (e.g. `scli install v1.0.1`). Use `-v` or `--verbose` for detailed logs. |
-| **scli get \<version\> [workdir]** | Same as install; extracts to `workdir/sessiondb/` (default: current dir). Use `-v` or `--verbose` for detailed logs. |
-| **scli run \<version\> [workdir]** | Run server+UI (get if needed; injects env from sessiondb.yaml in the bundle) |
+| **scli install [version]** | Download from GitHub Releases (sessiondb/service). Omit version for latest. Installs to install root (`versions/<tag>/`, `current` symlink). Use `-v` or `--verbose` for detailed logs. |
+| **scli get \<version\> [workdir]** | Same as install; use `workdir` as install root (default: current dir). |
+| **scli run [version] [workdir]** | Run server (uses `workdir/versions/<version>/` or `workdir/current`; injects env from sessiondb.yaml). |
 | **scli migrate** | POST `/v1/migrate` with `X-Migrate-Token` from config (run after deploy) |
 | **scli status** | Check if server is reachable (GET /health) |
 | **scli deploy** | Generate systemd unit for bare metal (`EnvironmentFile` = your .env) |
+| **scli reset** | Remove SessionDB install directory. Use `--all` to also remove `.env` and `config.yaml`. |
+| **scli update** | Fetch the last 5 scli releases, prompt to select a version, then download and replace the current binary (self-update). |
+
+## Install root and layout
+
+- **Install root** — Default: `/opt/sessiondb` (when root) or `$HOME/.local/share/sessiondb`. Override with `SESSIONDB_INSTALL_ROOT`. Under it: `versions/<tag>/` (backend binary, frontend dist, setup.sh, sessiondb.yaml) and `current` symlink → `versions/<installed-tag>`.
+- **Checksums** — If the release has `checksums.txt`, backend and frontend tarballs are verified with SHA256 before extraction.
+
+## Reset and self-update
+
+- **scli reset** — Removes the install root’s `versions/` and `current`, and the legacy config-dir `sessiondb-install`. Use `scli reset --all` to also remove `.env` and `config.yaml` (full config reset).
+- **scli update** — Fetches the latest 5 scli versions from GitHub, shows an interactive list, and after you pick one, downloads the matching binary for your OS/arch and replaces the current `scli` binary. On Windows, the new binary is written as `scli.exe.new`; replace `scli.exe` manually after closing the terminal.
 
 ## First-time flow
 

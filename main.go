@@ -92,6 +92,14 @@ func main() {
 		output := fs.String("output", "sessiondb.service", "Output path for systemd unit")
 		_ = fs.Parse(args)
 		err = runDeploy(*configDir, *platform, *output)
+	case "reset":
+		fs := flag.NewFlagSet("reset", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory")
+		all := fs.Bool("all", false, "Also remove .env and config.yaml")
+		_ = fs.Parse(args)
+		err = runReset(*configDir, *all)
+	case "update":
+		err = runUpdate()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
@@ -108,16 +116,21 @@ func printUsage() {
 
 Commands:
   init              Interactive configuration + generate secrets, save .env and config.yaml
-  install <version> Download and extract SessionDB binaries (e.g. scli install v1.0.1)
+  install [version] Download from GitHub Releases (default: latest). e.g. scli install, scli install v1.0.1
   get <version>     Same as install, extract to workdir/sessiondb (default workdir: .)
   run <version>     Run server+UI (get if needed, inject env from sessiondb.yaml)
   migrate           Run migrations (uses MIGRATE_TOKEN from config)
   status            Check if server is reachable
   deploy            Generate systemd unit for bare metal (--platform baremetal)
+  reset             Remove SessionDB install dir (use --all to also remove .env and config.yaml)
+  update            Fetch last 5 scli versions, pick one to install (self-update)
 
 Examples:
   scli init
   scli install v1.0.1
+  scli reset
+  scli reset --all
+  scli update
   scli migrate
   scli status`)
 }
