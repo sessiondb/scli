@@ -2,25 +2,33 @@
 
 CLI for installing and running SessionDB: interactive configuration, secret generation, install, migrate, and deploy.
 
-## Install (so you can run `scli` from anywhere)
+## Install (one command — `scli` on PATH)
 
-**Option A — Go install (recommended)**  
-From this directory:
+Run this to download the latest release and install so `scli` works everywhere (installs to `/usr/local/bin` if writable, else `~/.local/bin` and adds it to your shell config):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/sessiondb/scli/main/install.sh | bash
+```
+
+To install a specific version:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/sessiondb/scli/main/install.sh | bash -s -- v1.0.0
+```
+
+After install, open a new terminal or run `source ~/.zshrc` (or `~/.bashrc`) so `scli` is on PATH. Then run `scli init`, `scli install v1.0.1`, etc.
+
+---
+
+**Other install options**
+
+**Go install** (from this repo):
 ```bash
 go install .
-```
-The binary is placed in `$GOPATH/bin` or `$HOME/go/bin`. Ensure that directory is on your PATH, e.g. in `~/.zshrc` or `~/.bashrc`:
-```bash
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-**Option B — Copy to a PATH directory**
-```bash
-go build -o scli .
-sudo mv scli /usr/local/bin/   # or: cp scli ~/bin/ if ~/bin is on PATH
-```
-
-Then run `scli init`, `scli install v1.0.1`, etc. from any directory.
+**Manual**: Download the right binary from [Releases](https://github.com/sessiondb/scli/releases), put it in a directory on your PATH, and name it `scli` (or `scli.exe` on Windows).
 
 ## Build (local only)
 

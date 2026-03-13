@@ -1,0 +1,46 @@
+# Create a GitHub Release with built binaries when a new tag is pushed.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binaries
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          mkdir -p dist
+          GOOS=linux   GOARCH=amd64   go build -ldflags "-s -w" -o "dist/scli-${VERSION}-linux-amd64" .
+          GOOS=linux   GOARCH=arm64   go build -ldflags "-s -w" -o "dist/scli-${VERSION}-linux-arm64" .
+          GOOS=darwin  GOARCH=amd64   go build -ldflags "-s -w" -o "dist/scli-${VERSION}-darwin-amd64" .
+          GOOS=darwin  GOARCH=arm64   go build -ldflags "-s -w" -o "dist/scli-${VERSION}-darwin-arm64" .
+          GOOS=windows GOARCH=amd64   go build -ldflags "-s -w" -o "dist/scli-${VERSION}-windows-amd64.exe" .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+            install.sh
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

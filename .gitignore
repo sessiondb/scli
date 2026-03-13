@@ -1,5 +1,6 @@
 /sessiondb
 /scli
+/dist
 *.exe
 .env
 *.local
