@@ -20,12 +20,20 @@ func WriteEnv(path string, cfg *EnvConfig) error {
 	}
 	defer f.Close()
 	w := bufio.NewWriter(f)
+	writeEnvLine(w, "SERVER_PORT", cfg.ServerPort)
+	writeEnvLine(w, "SERVER_MODE", cfg.ServerMode)
 	writeEnvLine(w, "DB_HOST", cfg.DBHost)
+	writeEnvLine(w, "DB_PORT", cfg.DBPort)
 	writeEnvLine(w, "DB_USER", cfg.DBUser)
 	writeEnvLine(w, "DB_PASSWORD", cfg.DBPassword)
 	writeEnvLine(w, "DB_NAME", cfg.DBName)
-	writeEnvLine(w, "DB_PORT", cfg.DBPort)
+	writeEnvLine(w, "DB_SSLMODE", cfg.DBSSLMode)
 	writeEnvLine(w, "REDIS_ADDR", cfg.RedisAddr)
+	writeEnvLine(w, "REDIS_PASSWORD", cfg.RedisPassword)
+	writeEnvLine(w, "REDIS_DB", cfg.RedisDB)
+	writeEnvLine(w, "JWT_SECRET", cfg.JWTSecret)
+	writeEnvLine(w, "JWT_EXPIRY_HOURS", cfg.JWTExpiryHours)
+	writeEnvLine(w, "JWT_REFRESH_EXPIRY", cfg.JWTRefreshExpiry)
 	writeEnvLine(w, "DB_CREDENTIAL_ENCRYPTION_KEY", cfg.DBCredentialEncryptionKey)
 	writeEnvLine(w, "MIGRATE_TOKEN", cfg.MigrateToken)
 	return w.Flush()
@@ -114,8 +122,17 @@ func LoadEnvConfig(path string) (*EnvConfig, error) {
 		return nil, err
 	}
 	cfg := &EnvConfig{}
+	if v, ok := m["SERVER_PORT"]; ok {
+		cfg.ServerPort = v
+	}
+	if v, ok := m["SERVER_MODE"]; ok {
+		cfg.ServerMode = v
+	}
 	if v, ok := m["DB_HOST"]; ok {
 		cfg.DBHost = v
+	}
+	if v, ok := m["DB_PORT"]; ok {
+		cfg.DBPort = v
 	}
 	if v, ok := m["DB_USER"]; ok {
 		cfg.DBUser = v
@@ -126,11 +143,26 @@ func LoadEnvConfig(path string) (*EnvConfig, error) {
 	if v, ok := m["DB_NAME"]; ok {
 		cfg.DBName = v
 	}
-	if v, ok := m["DB_PORT"]; ok {
-		cfg.DBPort = v
+	if v, ok := m["DB_SSLMODE"]; ok {
+		cfg.DBSSLMode = v
 	}
 	if v, ok := m["REDIS_ADDR"]; ok {
 		cfg.RedisAddr = v
+	}
+	if v, ok := m["REDIS_PASSWORD"]; ok {
+		cfg.RedisPassword = v
+	}
+	if v, ok := m["REDIS_DB"]; ok {
+		cfg.RedisDB = v
+	}
+	if v, ok := m["JWT_SECRET"]; ok {
+		cfg.JWTSecret = v
+	}
+	if v, ok := m["JWT_EXPIRY_HOURS"]; ok {
+		cfg.JWTExpiryHours = v
+	}
+	if v, ok := m["JWT_REFRESH_EXPIRY"]; ok {
+		cfg.JWTRefreshExpiry = v
 	}
 	if v, ok := m["DB_CREDENTIAL_ENCRYPTION_KEY"]; ok {
 		cfg.DBCredentialEncryptionKey = v
