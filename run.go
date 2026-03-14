@@ -11,47 +11,68 @@ import (
 	"github.com/sessiondb/scli/internal/config"
 )
 
-// pidFileName is the name of the PID file for the server started by "scli run" (non-systemd).
-const pidFileName = "sessiondb.pid"
-
-// runLogFileName is the name of the log file when running server in background via "scli run".
-const runLogFileName = "sessiondb.log"
-
 // run starts the requested/current version in background and follows logs.
-// It uses init-generated global config (.env preferred, config.yaml fallback).
-// Ctrl+C only stops the log tail; use "scli stop" to stop the server.
-func run(version string, workDir string, configDir string) error {
-	return start(version, workDir, configDir, true)
+// Component: api, ui, or all. Uses init-generated global config.
+func run(version string, workDir string, configDir string, component string) error {
+	return start(version, workDir, configDir, true, component)
 }
 
 // runStart starts the requested/current version in background without following logs.
-// Use this for automation or detached starts.
-func runStart(version string, workDir string, configDir string) error {
-	return start(version, workDir, configDir, false)
+func runStart(version string, workDir string, configDir string, component string) error {
+	return start(version, workDir, configDir, false, component)
 }
 
-// start ensures the version is present under workDir (calls get if needed), loads init config,
-// starts the server in background, and optionally tails logs.
-func start(version string, workDir string, configDir string, followLogs bool) error {
+// start ensures the version is present, loads init config, starts the requested component(s)
+// in background, and optionally tails logs.
+func start(version string, workDir string, configDir string, followLogs bool, component string) error {
+	if component == "" {
+		component = ComponentAPI
+	}
+	if !validComponent(component) {
+		return fmt.Errorf("invalid component %q; use api, ui, or all", component)
+	}
 	if configDir == "" {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
 	defaultRoot := getInstallRoot("")
 	defaultRoot, _ = filepath.Abs(defaultRoot)
-
 	workDir, _ = filepath.Abs(workDir)
-	// If systemd is installed and caller uses the default install root/current version,
-	// prefer systemd as the single runtime manager.
-	if version == "" && workDir == defaultRoot && systemdUnitInstalled() {
-		if err := startSystemdService(); err != nil {
-			return err
+
+	// Prefer systemd when installed and default install root.
+	if version == "" && workDir == defaultRoot && runtime.GOOS == "linux" {
+		if component == ComponentAPI && systemdUnitInstalled(systemdAPIServiceName) {
+			if err := startSystemdServiceUnit(systemdAPIServiceName); err != nil {
+				return err
+			}
+			if followLogs {
+				return runLogsWithComponent(100, true, ComponentAPI)
+			}
+			return nil
 		}
-		if followLogs {
-			return runLogs(100, true)
+		if component == ComponentUI && systemdUnitInstalled(systemdUIServiceName) {
+			if err := startSystemdServiceUnit(systemdUIServiceName); err != nil {
+				return err
+			}
+			if followLogs {
+				return runLogsWithComponent(100, true, ComponentUI)
+			}
+			return nil
 		}
-		return nil
+		if component == ComponentAll {
+			if systemdUnitInstalled(systemdAPIServiceName) {
+				_ = startSystemdServiceUnit(systemdAPIServiceName)
+			}
+			if systemdUnitInstalled(systemdUIServiceName) {
+				_ = startSystemdServiceUnit(systemdUIServiceName)
+			}
+			if followLogs {
+				return runLogsWithComponent(100, true, ComponentAPI)
+			}
+			return nil
+		}
 	}
+
 	var sessiondbDir string
 	if version != "" {
 		version = normalizeTag(version)
@@ -65,86 +86,121 @@ func start(version string, workDir string, configDir string, followLogs bool) er
 			} else {
 				sessiondbDir = currentLink
 			}
-		} else {
-			sessiondbDir = filepath.Join(workDir, "sessiondb")
-		}
+	} else {
+		sessiondbDir = filepath.Join(workDir, "sessiondb")
+	}
 	}
 
 	setup := filepath.Join(sessiondbDir, "setup.sh")
-	if _, err := os.Stat(setup); os.IsNotExist(err) {
-		if version != "" {
-			if err := get(version, workDir); err != nil {
-				return err
+	uiBin := filepath.Join(sessiondbDir, "ui", uiBinaryName)
+	if component == ComponentAPI || component == ComponentAll {
+		if _, err := os.Stat(setup); os.IsNotExist(err) {
+			if version != "" {
+				if err := get(version, workDir); err != nil {
+					return err
+				}
+				sessiondbDir = filepath.Join(workDir, "versions", version)
+				setup = filepath.Join(sessiondbDir, "setup.sh")
+				uiBin = filepath.Join(sessiondbDir, "ui", uiBinaryName)
+			} else {
+				return fmt.Errorf("no setup.sh at %s; run scli install <version> first", sessiondbDir)
 			}
-			sessiondbDir = filepath.Join(workDir, "versions", version)
-			setup = filepath.Join(sessiondbDir, "setup.sh")
-		} else {
-			return fmt.Errorf("no setup.sh at %s; run scli install <version> first", sessiondbDir)
+		}
+	}
+	if component == ComponentUI || component == ComponentAll {
+		if _, err := os.Stat(uiBin); os.IsNotExist(err) {
+			return fmt.Errorf("UI binary not found at %s; install a release that includes sessiondb-ui-<os>-<arch>", uiBin)
 		}
 	}
 
-	// Use init-generated global config as source of truth:
-	// .env preferred; if missing, fallback to config.yaml and recreate .env.
 	envSlice, err := config.EnvSliceFromInitFiles(os.Environ(), configDir)
 	if err != nil {
 		return err
 	}
-
-	pidPath := filepath.Join(configDir, pidFileName)
 	logsDir := filepath.Join(configDir, "logs")
-	logPath := filepath.Join(logsDir, runLogFileName)
-
-	// If PID file exists and process is running, do not start again.
-	if pidBytes, err := os.ReadFile(pidPath); err == nil {
-		if pid, err := strconv.Atoi(string(pidBytes)); err == nil && processExists(pid) {
-			fmt.Fprintf(os.Stderr, "Server already running (PID %d). Use 'scli stop' to stop or 'scli logs -f' to follow logs.\n", pid)
-			fmt.Fprintf(os.Stderr, "Log file: %s\n", logPath)
-			if followLogs {
-				// Still run tail -f so user can watch logs.
-				return tailLogFile(logPath)
-			}
-			return nil
-		}
-		_ = os.Remove(pidPath)
-	}
-
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Errorf("create logs dir: %w", err)
 	}
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open log file: %w", err)
+	startAPI := component == ComponentAPI || component == ComponentAll
+	startUI := component == ComponentUI || component == ComponentAll
+
+	if startAPI {
+		pidPath := filepath.Join(configDir, pidFileAPI)
+		logPath := filepath.Join(logsDir, runLogFileAPI)
+		if pidBytes, err := os.ReadFile(pidPath); err == nil {
+			if pid, err := strconv.Atoi(string(pidBytes)); err == nil && processExists(pid) {
+				fmt.Fprintf(os.Stderr, "API already running (PID %d). Use 'scli stop' or 'scli logs -f --component api'.\n", pid)
+				if followLogs {
+					return tailLogFile(logPath)
+				}
+				startAPI = false
+			} else {
+				_ = os.Remove(pidPath)
+			}
+		}
+		if startAPI {
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("open API log file: %w", err)
+			}
+			cmd := exec.Command(setup)
+			cmd.Dir = sessiondbDir
+			cmd.Env = envSlice
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+			if err := cmd.Start(); err != nil {
+				logFile.Close()
+				return fmt.Errorf("start API: %w", err)
+			}
+			_ = os.WriteFile(filepath.Join(configDir, pidFileAPI), []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+			logFile.Close()
+			fmt.Fprintf(os.Stderr, "API started (PID %d). Logs: %s\n", cmd.Process.Pid, logPath)
+		}
+	}
+	if startUI {
+		pidPath := filepath.Join(configDir, pidFileUI)
+		logPath := filepath.Join(logsDir, runLogFileUI)
+		if pidBytes, err := os.ReadFile(pidPath); err == nil {
+			if pid, err := strconv.Atoi(string(pidBytes)); err == nil && processExists(pid) {
+				fmt.Fprintf(os.Stderr, "UI already running (PID %d). Use 'scli stop' or 'scli logs -f --component ui'.\n", pid)
+				if followLogs && !startAPI {
+					return tailLogFile(logPath)
+				}
+				startUI = false
+			} else {
+				_ = os.Remove(pidPath)
+			}
+		}
+		if startUI {
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("open UI log file: %w", err)
+			}
+			cmd := exec.Command(uiBin)
+			cmd.Dir = sessiondbDir
+			cmd.Env = envSlice
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+			if err := cmd.Start(); err != nil {
+				logFile.Close()
+				return fmt.Errorf("start UI: %w", err)
+			}
+			_ = os.WriteFile(filepath.Join(configDir, pidFileUI), []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+			logFile.Close()
+			fmt.Fprintf(os.Stderr, "UI started (PID %d). Logs: %s\n", cmd.Process.Pid, logPath)
+		}
 	}
 
-	cmd := exec.Command(setup)
-	cmd.Dir = sessiondbDir
-	cmd.Env = envSlice
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.Stdin = nil
-
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
-		return fmt.Errorf("start server: %w", err)
-	}
-
-	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0644); err != nil {
-		logFile.Close()
-		_ = cmd.Process.Kill()
-		return fmt.Errorf("write PID file: %w", err)
-	}
-	// Close the log file in this process so the server keeps writing; tail will read independently.
-	logFile.Close()
-
-	fmt.Fprintf(os.Stderr, "Server started in background (PID %d). Logs: %s\n", cmd.Process.Pid, logPath)
 	if !followLogs {
-		fmt.Fprintln(os.Stderr, "Use 'scli logs -f' to follow service logs, or 'tail -f' on the run log file.")
+		fmt.Fprintln(os.Stderr, "Use 'scli logs -f --component api' or 'scli logs -f --component ui' to follow logs.")
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, "Press Ctrl+C to stop following logs (server keeps running). Use 'scli stop' to stop the server.")
-	// Follow logs; Ctrl+C stops only the tail.
-	return tailLogFile(logPath)
+	fmt.Fprintln(os.Stderr, "Press Ctrl+C to stop following logs. Use 'scli stop' to stop.")
+	if component == ComponentUI {
+		return tailLogFile(filepath.Join(logsDir, runLogFileUI))
+	}
+	return tailLogFile(filepath.Join(logsDir, runLogFileAPI))
 }
 
 // tailLogFile runs "tail -f" on the given path (Unix). On Windows or if tail fails, opens and reads the file.

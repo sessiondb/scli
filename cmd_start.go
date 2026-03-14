@@ -1,17 +1,34 @@
 package main
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"runtime"
+)
 
-// runStartCommand starts SessionDB in the background using the requested/current version.
-// It does not attach a tail; use "scli logs -f" to follow logs.
-func runStartCommand(version string, workDir string, configDir string) error {
+// runStartCommand starts SessionDB in the background. Component: api, ui, or all.
+func runStartCommand(version string, workDir string, configDir string, component string) error {
+	if component == "" {
+		component = ComponentAPI
+	}
 	defaultRoot := getInstallRoot("")
 	defaultRoot, _ = filepath.Abs(defaultRoot)
 	workDir, _ = filepath.Abs(workDir)
-	// Prefer systemd when installed and no explicit version/workdir is requested.
-	// This ensures "start" always runs the current/latest installed version in service mode.
-	if version == "" && workDir == defaultRoot && systemdUnitInstalled() {
-		return startSystemdService()
+	if version == "" && workDir == defaultRoot && runtime.GOOS == "linux" {
+		if component == ComponentAPI && systemdUnitInstalled(systemdAPIServiceName) {
+			return startSystemdServiceUnit(systemdAPIServiceName)
+		}
+		if component == ComponentUI && systemdUnitInstalled(systemdUIServiceName) {
+			return startSystemdServiceUnit(systemdUIServiceName)
+		}
+		if component == ComponentAll {
+			if systemdUnitInstalled(systemdAPIServiceName) {
+				_ = startSystemdServiceUnit(systemdAPIServiceName)
+			}
+			if systemdUnitInstalled(systemdUIServiceName) {
+				_ = startSystemdServiceUnit(systemdUIServiceName)
+			}
+			return nil
+		}
 	}
-	return runStart(version, workDir, configDir)
+	return runStart(version, workDir, configDir, component)
 }

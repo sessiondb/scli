@@ -43,6 +43,7 @@ func runResources(configDir string, installRootOverride string) error {
 
 	serverBin := filepath.Join(currentPath, "server", "sessiondb-server")
 	uiDist := filepath.Join(currentPath, "ui", "dist", "index.html")
+	uiBin := filepath.Join(currentPath, "ui", "sessiondb-ui")
 	setupScript := filepath.Join(currentPath, "setup.sh")
 	unitPath := "/etc/systemd/system/sessiondb.service"
 
@@ -62,6 +63,11 @@ func runResources(configDir string, installRootOverride string) error {
 	fmt.Println("Frontend:")
 	fmt.Printf("  ui dist:       %s", uiDist)
 	if _, err := os.Stat(uiDist); err != nil {
+		fmt.Printf(" (missing: %v)", err)
+	}
+	fmt.Println()
+	fmt.Printf("  ui binary:     %s", uiBin)
+	if _, err := os.Stat(uiBin); err != nil {
 		fmt.Printf(" (missing: %v)", err)
 	}
 	fmt.Println()
@@ -90,4 +96,3 @@ func runResources(configDir string, installRootOverride string) error {
 
 	return nil
 }
-

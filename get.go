@@ -175,9 +175,22 @@ func get(version string, destDir string) error {
 		if err := extractTarGzip(frontendPath, filepath.Join(versionDir, "ui")); err != nil {
 			return fmt.Errorf("extract frontend: %w", err)
 		}
+		// If release also has UI server binary, download it so "scli run --component ui" and deploy --component ui work.
+		uiBinAssetName := fmt.Sprintf("sessiondb-ui-%s-%s", runtime.GOOS, runtime.GOARCH)
+		if uiBinURL := findAssetURL(frontendRelease, uiBinAssetName); uiBinURL != "" {
+			uiBinPath := filepath.Join(versionDir, "ui", uiBinaryName)
+			uiTmp := filepath.Join(tmpDir, uiBinAssetName)
+			if _, err := downloadAsset(uiBinURL, uiTmp); err == nil {
+				data, _ := os.ReadFile(uiTmp)
+				_ = os.WriteFile(uiBinPath, data, 0755)
+				if verbose {
+					fmt.Fprintf(os.Stderr, "[verbose] installed UI server binary to %s\n", uiBinPath)
+				}
+			}
+		}
 	} else {
-		// Binary-style frontend artifact (mapped per platform); keep it for runtime integrations.
-		uiBinPath := filepath.Join(versionDir, "ui", "sessiondb-ui")
+		// Binary-style frontend artifact (mapped per platform).
+		uiBinPath := filepath.Join(versionDir, "ui", uiBinaryName)
 		data, err := os.ReadFile(frontendPath)
 		if err != nil {
 			return fmt.Errorf("read frontend binary: %w", err)
@@ -209,5 +222,7 @@ func get(version string, destDir string) error {
 
 	fmt.Printf("Installed %s to %s\n", version, versionDir)
 	fmt.Printf("current -> versions/%s\n", version)
+	fmt.Printf("Backend asset:  %s\n", backendName)
+	fmt.Printf("Frontend asset: %s\n", frontendAssetSelected)
 	return nil
 }

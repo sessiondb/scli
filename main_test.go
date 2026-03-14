@@ -37,7 +37,7 @@ func Test_runDeploy_usesInstallRootEnv(t *testing.T) {
 
 	t.Setenv("SESSIONDB_INSTALL_ROOT", "/opt/custom-sessiondb")
 
-	if err := runDeploy(configDir, "baremetal", output); err != nil {
+	if err := runDeploy(configDir, "baremetal", output, ComponentAPI); err != nil {
 		t.Fatalf("runDeploy error: %v", err)
 	}
 

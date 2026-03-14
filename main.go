@@ -62,6 +62,7 @@ func main() {
 	case "run":
 		fs := flag.NewFlagSet("run", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")
+		component := fs.String("component", "api", "Component to run: api, ui, or all")
 		_ = fs.Parse(args)
 		version := ""
 		workDir := ""
@@ -75,10 +76,11 @@ func main() {
 			workDir = getInstallRoot("")
 		}
 		workDir, _ = filepath.Abs(workDir)
-		err = run(version, workDir, *configDir)
+		err = run(version, workDir, *configDir, *component)
 	case "start":
 		fs := flag.NewFlagSet("start", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")
+		component := fs.String("component", "api", "Component to start: api, ui, or all")
 		_ = fs.Parse(args)
 		version := ""
 		workDir := ""
@@ -92,7 +94,7 @@ func main() {
 			workDir = getInstallRoot("")
 		}
 		workDir, _ = filepath.Abs(workDir)
-		err = runStartCommand(version, workDir, *configDir)
+		err = runStartCommand(version, workDir, *configDir, *component)
 	case "stop":
 		fs := flag.NewFlagSet("stop", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory")
@@ -114,8 +116,9 @@ func main() {
 		configDir := fs.String("config-dir", "", "Config directory")
 		platform := fs.String("platform", "baremetal", "Deploy platform (baremetal)")
 		output := fs.String("output", "sessiondb.service", "Output path for systemd unit")
+		component := fs.String("component", "all", "Component to deploy: api, ui, or all")
 		_ = fs.Parse(args)
-		err = runDeploy(*configDir, *platform, *output)
+		err = runDeploy(*configDir, *platform, *output, *component)
 	case "reset":
 		fs := flag.NewFlagSet("reset", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory")
@@ -140,8 +143,9 @@ func main() {
 		fs := flag.NewFlagSet("logs", flag.ExitOnError)
 		lines := fs.Int("n", 100, "Number of log lines to show")
 		follow := fs.Bool("f", false, "Follow logs (like tail -f)")
+		component := fs.String("component", "api", "Component logs: api or ui")
 		_ = fs.Parse(args)
-		err = runLogs(*lines, *follow)
+		err = runLogsWithComponent(*lines, *follow, *component)
 	case "config":
 		if len(args) < 1 {
 			fmt.Fprintln(os.Stderr, "Usage: scli config <view|edit> [--config-dir DIR]")

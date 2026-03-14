@@ -8,13 +8,16 @@ import (
 	"github.com/sessiondb/scli/internal/config"
 )
 
-// runDeploy generates a systemd unit file for bare metal using the global .env and a single
-// version via the "current" symlink. Uses absolute paths and WorkingDirectory so the service
-// starts reliably. When you install a new version, the symlink is updated; stop then start
-// the service (or use "scli install" which restarts the service) so the new version runs.
-func runDeploy(configDir string, platform string, outputPath string) error {
+// runDeploy generates systemd unit file(s) for bare metal. Component: api (backend), ui (frontend server), or all (both).
+func runDeploy(configDir string, platform string, outputPath string, component string) error {
 	if platform != "baremetal" && platform != "" {
 		return fmt.Errorf("unsupported platform: %s (only 'baremetal' is supported)", platform)
+	}
+	if component != "" && !validComponent(component) {
+		return fmt.Errorf("invalid component %q; use api, ui, or all", component)
+	}
+	if component == "" {
+		component = ComponentAll
 	}
 	if configDir == "" {
 		configDir = config.DefaultConfigDir()
@@ -24,11 +27,9 @@ func runDeploy(configDir string, platform string, outputPath string) error {
 	configYAMLPath := config.ConfigYAMLPath(configDir)
 	installRoot := getInstallRoot("")
 	installRoot, _ = filepath.Abs(installRoot)
-	binaryPath := filepath.Join(installRoot, "current", "server", "sessiondb-server")
 	workDir := filepath.Join(installRoot, "current")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		// Fallback: recreate .env from config.yaml from init so deploy uses a single EnvironmentFile.
 		cfg, loadErr := config.LoadConfigYAML(configYAMLPath)
 		if loadErr == nil {
 			if writeErr := config.WriteEnv(envPath, cfg); writeErr != nil {
@@ -36,27 +37,20 @@ func runDeploy(configDir string, platform string, outputPath string) error {
 			}
 			fmt.Printf("Recreated %s from %s\n", envPath, configYAMLPath)
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: %s does not exist and %s could not be loaded. Run 'scli init' first.\n", envPath, configYAMLPath)
+			fmt.Fprintf(os.Stderr, "Warning: %s does not exist. Run 'scli init' first.\n", envPath)
 		}
 	}
-	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Warning: server binary not found at %s. Run 'scli install' first.\n", binaryPath)
-	}
 
-	if outputPath == "" {
-		outputPath = "sessiondb.service"
-	}
-
-	// Use absolute paths so the unit works regardless of who runs systemctl.
-	unit := `[Unit]
-Description=SessionDB Server
-After=network.target postgresql.service redis.service
+	writeUnit := func(outPath, desc, execPath string) error {
+		unit := `[Unit]
+Description=` + desc + `
+After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=` + workDir + `
 EnvironmentFile=` + envPath + `
-ExecStart=` + binaryPath + `
+ExecStart=` + execPath + `
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=30
@@ -64,23 +58,47 @@ TimeoutStartSec=30
 [Install]
 WantedBy=multi-user.target
 `
-	if err := os.WriteFile(outputPath, []byte(unit), 0644); err != nil {
-		return err
+		return os.WriteFile(outPath, []byte(unit), 0644)
 	}
-	fmt.Printf("Generated %s\n", outputPath)
-	fmt.Println()
-	fmt.Println("Paths used:")
-	fmt.Printf("  WorkingDirectory: %s\n", workDir)
-	fmt.Printf("  EnvironmentFile:  %s\n", envPath)
-	fmt.Printf("  ExecStart:        %s\n", binaryPath)
+
+	var generated []string
+	if component == ComponentAPI || component == ComponentAll {
+		apiBin := filepath.Join(installRoot, "current", "server", "sessiondb-server")
+		if _, err := os.Stat(apiBin); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: API binary not found at %s. Run 'scli install' first.\n", apiBin)
+		}
+		outPath := outputPath
+		if outPath == "" {
+			outPath = systemdAPIServiceName
+		}
+		if err := writeUnit(outPath, "SessionDB API Server", apiBin); err != nil {
+			return err
+		}
+		generated = append(generated, outPath)
+	}
+	if component == ComponentUI || component == ComponentAll {
+		uiBin := filepath.Join(installRoot, "current", "ui", uiBinaryName)
+		if _, err := os.Stat(uiBin); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Warning: UI binary not found at %s. Install a release that includes sessiondb-ui-<os>-<arch>.\n", uiBin)
+		}
+		outPath := systemdUIServiceName
+		if component == ComponentUI && outputPath != "" {
+			outPath = outputPath
+		}
+		if err := writeUnit(outPath, "SessionDB UI Server", uiBin); err != nil {
+			return err
+		}
+		generated = append(generated, outPath)
+	}
+
+	fmt.Printf("Generated %v\n", generated)
 	fmt.Println()
 	fmt.Println("To install and start:")
-	fmt.Println("  sudo cp " + outputPath + " /etc/systemd/system/")
+	fmt.Println("  sudo cp " + systemdAPIServiceName + " " + systemdUIServiceName + " /etc/systemd/system/")
 	fmt.Println("  sudo systemctl daemon-reload")
-	fmt.Println("  sudo systemctl enable sessiondb")
-	fmt.Println("  sudo systemctl start sessiondb")
+	fmt.Println("  sudo systemctl enable sessiondb sessiondb-ui")
+	fmt.Println("  sudo systemctl start sessiondb sessiondb-ui")
 	fmt.Println()
-	fmt.Println("After upgrading with 'scli install <version>', restart so the new version runs:")
-	fmt.Println("  sudo systemctl restart sessiondb")
+	fmt.Println("After upgrading: sudo systemctl restart sessiondb sessiondb-ui")
 	return nil
 }

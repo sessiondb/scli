@@ -19,12 +19,12 @@ func runStop(configDir string) error {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
-	pidPath := filepath.Join(configDir, pidFileName)
 	installRoot := getInstallRoot("")
 	installRoot, _ = filepath.Abs(installRoot)
 	stoppedAny := false
 
-	// Stop the process started by "scli run"/"scli start" if PID file exists.
+	// Stop API process (PID file from scli run/start).
+	pidPath := filepath.Join(configDir, pidFileAPI)
 	if data, err := os.ReadFile(pidPath); err == nil {
 		pid, err := strconv.Atoi(string(data))
 		if err != nil {
@@ -46,21 +46,39 @@ func runStop(configDir string) error {
 		if err := os.Remove(pidPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not remove PID file %s: %v\n", pidPath, err)
 		}
-		fmt.Printf("Stopped server (PID %d).\n", pid)
+		fmt.Printf("Stopped API (PID %d).\n", pid)
 	}
 
-	// Stop systemd unit if active.
-	if err := stopSystemdService(); err == nil {
+	// Stop UI process (PID file from scli run --component ui).
+	uiPidPath := filepath.Join(configDir, pidFileUI)
+	if data, err := os.ReadFile(uiPidPath); err == nil {
+		pid, err := strconv.Atoi(string(data))
+		if err == nil && processExists(pid) {
+			proc, _ := os.FindProcess(pid)
+			_ = proc.Kill()
+			stoppedAny = true
+			fmt.Printf("Stopped UI (PID %d).\n", pid)
+		}
+		_ = os.Remove(uiPidPath)
+	}
+
+	// Stop systemd units if active.
+	if err := stopSystemdServiceUnit(systemdAPIServiceName); err == nil {
 		fmt.Println("Stopped sessiondb systemd service.")
 		stoppedAny = true
 	}
+	if err := stopSystemdServiceUnit(systemdUIServiceName); err == nil {
+		fmt.Println("Stopped sessiondb-ui systemd service.")
+		stoppedAny = true
+	}
 
-	// Stop any leftover SessionDB server processes.
-	// We match paths under install root and generic sessiondb-server process names.
+	// Stop any leftover SessionDB processes.
 	if count, err := killMatchingProcesses([]string{
 		filepath.Join(installRoot, "current", "server", "sessiondb-server"),
+		filepath.Join(installRoot, "current", "ui", uiBinaryName),
 		filepath.Join(installRoot, "versions"),
 		"sessiondb-server",
+		uiBinaryName,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: process cleanup encountered an error: %v\n", err)
 	} else if count > 0 {
