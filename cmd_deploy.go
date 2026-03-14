@@ -29,17 +29,14 @@ After=network.target postgresql.service redis.service
 [Service]
 Type=simple
 EnvironmentFile=` + envPath + `
-ExecStart=%s/sessiondb
+ExecStart=%s/current/server/sessiondb-server
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 `
-	installDir := "/opt/sessiondb"
-	if d := os.Getenv("SESSIONDB_INSTALL_DIR"); d != "" {
-		installDir = d
-	}
+	installDir := getInstallRoot("")
 	unit = fmt.Sprintf(unit, installDir)
 	if err := os.WriteFile(outputPath, []byte(unit), 0644); err != nil {
 		return err
@@ -52,6 +49,6 @@ WantedBy=multi-user.target
 	fmt.Println("  sudo systemctl enable sessiondb")
 	fmt.Println("  sudo systemctl start sessiondb")
 	fmt.Println()
-	fmt.Println("Ensure the server binary is at " + installDir + "/sessiondb and EnvironmentFile points to your .env")
+	fmt.Println("Ensure the server binary is at " + installDir + "/current/server/sessiondb-server and EnvironmentFile points to your .env")
 	return nil
 }

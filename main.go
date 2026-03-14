@@ -100,6 +100,38 @@ func main() {
 		err = runReset(*configDir, *all)
 	case "update":
 		err = runUpdate()
+	case "resources":
+		fs := flag.NewFlagSet("resources", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory")
+		installRoot := fs.String("install-root", "", "Install root (default: SESSIONDB_INSTALL_ROOT or /opt/sessiondb when root)")
+		_ = fs.Parse(args)
+		err = runResources(*configDir, *installRoot)
+	case "logs":
+		fs := flag.NewFlagSet("logs", flag.ExitOnError)
+		lines := fs.Int("n", 100, "Number of log lines to show")
+		follow := fs.Bool("f", false, "Follow logs (like tail -f)")
+		_ = fs.Parse(args)
+		err = runLogs(*lines, *follow)
+	case "config":
+		if len(args) < 1 {
+			fmt.Fprintln(os.Stderr, "Usage: scli config <view|edit> [--config-dir DIR]")
+			os.Exit(1)
+		}
+		sub := args[0]
+		subArgs := args[1:]
+		fs := flag.NewFlagSet("config "+sub, flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory")
+		_ = fs.Parse(subArgs)
+		switch sub {
+		case "view":
+			err = runConfigView(*configDir)
+		case "edit":
+			err = runConfigEdit(*configDir)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown config subcommand: %s\n", sub)
+			fmt.Fprintln(os.Stderr, "Usage: scli config <view|edit> [--config-dir DIR]")
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
@@ -115,15 +147,18 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage: scli <command> [options]
 
 Commands:
-  init              Interactive configuration + generate secrets, save .env and config.yaml
-  install [version] Download from GitHub Releases (default: latest). e.g. scli install, scli install v1.0.1
-  get <version>     Same as install, extract to workdir/sessiondb (default workdir: .)
-  run <version>     Run server+UI (get if needed, inject env from sessiondb.yaml)
-  migrate           Run migrations (uses MIGRATE_TOKEN from config)
-  status            Check if server is reachable
-  deploy            Generate systemd unit for bare metal (--platform baremetal)
-  reset             Remove SessionDB install dir (use --all to also remove .env and config.yaml)
-  update            Fetch last 5 scli versions, pick one to install (self-update)
+  init                Interactive configuration + generate secrets, save .env and config.yaml
+  install [version]   Download from GitHub Releases (default: latest). e.g. scli install, scli install v1.0.1
+  get <version>       Same as install, extract to workdir/sessiondb (default workdir: .)
+  run <version>       Run server+UI (get if needed, inject env from sessiondb.yaml)
+  migrate             Run migrations (uses MIGRATE_TOKEN from config)
+  status              Check if server is reachable
+  deploy              Generate systemd unit for bare metal (--platform baremetal)
+  reset               Remove SessionDB install dir (use --all to also remove .env and config.yaml)
+  update              Fetch last 5 scli versions, pick one to install (self-update)
+  resources           Show installed SessionDB resources (binaries, UI, config, unit)
+  logs                Show SessionDB service logs (systemd/journalctl wrapper)
+  config view|edit    View or edit SessionDB configuration (.env)
 
 Examples:
   scli init

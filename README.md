@@ -66,7 +66,6 @@ go build -o scli .
 ```bash
 scli init
 scli install v1.0.1
-# Copy binary to /opt/sessiondb, then:
 scli deploy --output sessiondb.service
 sudo cp sessiondb.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable sessiondb && sudo systemctl start sessiondb
@@ -84,7 +83,7 @@ scli status
   `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN` are generated on first `scli init` and **reused** if .env already exists (no regeneration on re-run).
 
 - **Bare metal**  
-  `scli deploy` writes a systemd unit that uses `EnvironmentFile=/path/to/.env`. Set `SESSIONDB_INSTALL_DIR` to the directory containing the server binary (default `/opt/sessiondb`).
+  `scli deploy` writes a systemd unit that uses `EnvironmentFile=/path/to/.env` and `ExecStart=<install-root>/current/server/sessiondb-server`. Set `SESSIONDB_INSTALL_DIR` to override the install root if needed (default `/opt/sessiondb` when running as root).
 
 ## License
 
