@@ -46,8 +46,17 @@ func EnvSlice(base []string, path string) ([]string, error) {
 }
 
 // EnvSliceFromInitFiles returns KEY=value strings for exec.Cmd.Env by loading the init-generated config.
-// It prefers .env; if .env is missing, it falls back to config.yaml and writes back .env for consistency.
+// Prefers config.toml (single source of truth); if missing, falls back to .env then config.yaml.
 func EnvSliceFromInitFiles(base []string, configDir string) ([]string, error) {
+	tomlPath := ConfigTOMLPath(configDir)
+	tomlCfg, err := LoadConfigTOML(tomlPath)
+	if err != nil {
+		return nil, err
+	}
+	if tomlCfg != nil {
+		return EnvSliceFromToml(base, tomlCfg), nil
+	}
+
 	envPath := EnvPath(configDir)
 	out, err := EnvSlice(base, envPath)
 	if err == nil {
@@ -61,12 +70,11 @@ func EnvSliceFromInitFiles(base []string, configDir string) ([]string, error) {
 	cfg, cfgErr := LoadConfigYAML(cfgPath)
 	if cfgErr != nil {
 		if os.IsNotExist(cfgErr) {
-			return nil, fmt.Errorf("neither %s nor %s exists; run 'scli init' first", envPath, cfgPath)
+			return nil, fmt.Errorf("no config found (looked for %s, %s, %s); run 'scli init' first", tomlPath, envPath, cfgPath)
 		}
 		return nil, cfgErr
 	}
 
-	// Recreate .env from config.yaml so future commands have a single source file.
 	if writeErr := WriteEnv(envPath, cfg); writeErr != nil {
 		return nil, writeErr
 	}

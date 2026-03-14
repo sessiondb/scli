@@ -15,6 +15,7 @@ func runResources(configDir string, installRootOverride string) error {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
+	tomlPath := config.ConfigTOMLPath(configDir)
 	envPath := config.EnvPath(configDir)
 	configYAMLPath := config.ConfigYAMLPath(configDir)
 
@@ -75,12 +76,17 @@ func runResources(configDir string, installRootOverride string) error {
 
 	fmt.Println("Config:")
 	fmt.Println("  config dir:    " + configDir)
-	fmt.Printf("  .env:          %s", envPath)
+	fmt.Printf("  config.toml:   %s", tomlPath)
+	if _, err := os.Stat(tomlPath); err != nil {
+		fmt.Printf(" (missing: %v)", err)
+	}
+	fmt.Println()
+	fmt.Printf("  .env:          %s (generated for systemd/backend)", envPath)
 	if _, err := os.Stat(envPath); err != nil {
 		fmt.Printf(" (missing: %v)", err)
 	}
 	fmt.Println()
-	fmt.Printf("  config.yaml:   %s", configYAMLPath)
+	fmt.Printf("  config.yaml:   %s (legacy)", configYAMLPath)
 	if _, err := os.Stat(configYAMLPath); err != nil {
 		fmt.Printf(" (missing: %v)", err)
 	}

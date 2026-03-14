@@ -123,7 +123,7 @@ func main() {
 	case "reset":
 		fs := flag.NewFlagSet("reset", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory")
-		all := fs.Bool("all", false, "Also remove .env and config.yaml")
+		all := fs.Bool("all", false, "Also remove config.toml and generated .env")
 		_ = fs.Parse(args)
 		err = runReset(*configDir, *all)
 	case "prune":
@@ -182,7 +182,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage: scli <command> [options]
 
 Commands:
-  init                Interactive configuration + generate secrets, save .env and config.yaml
+  init                Interactive configuration + generate secrets, save config.toml (and .env for systemd)
   install [version]   Download from GitHub Releases (default: latest). Restarts systemd service if active.
   get <version>       Same as install, extract to workdir (default workdir: install root)
   run [version]       Start server in background and follow logs (uses init config). Ctrl+C stops tail only.
@@ -190,13 +190,13 @@ Commands:
   stop                Stop all SessionDB processes (PID file, systemd, leftovers)
   migrate             Run migrations (uses MIGRATE_TOKEN from config)
   status              Check if server is reachable
-  deploy              Generate systemd unit for bare metal (single .env, version via current symlink)
-  reset               Remove SessionDB install dir (use --all to also remove .env and config.yaml)
+  deploy              Generate systemd unit for bare metal (config from config.toml / .env, version via current symlink)
+  reset               Remove SessionDB install dir (use --all to also remove config.toml and .env)
   prune               Remove all SessionDB install + config data from host (requires --yes)
   update              Fetch last 5 scli versions, pick one to install (self-update)
   resources           Show installed SessionDB resources (binaries, UI, config, unit)
   logs                Show SessionDB service logs (systemd/journalctl wrapper)
-  config view|edit    View or edit SessionDB configuration (.env)
+  config view|edit    View or edit SessionDB configuration (config.toml or .env)
 
 Examples:
   scli init

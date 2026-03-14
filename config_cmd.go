@@ -9,32 +9,49 @@ import (
 	"github.com/sessiondb/scli/internal/config"
 )
 
-// runConfigView prints a human-friendly view of the current configuration from .env.
+// runConfigView prints a human-friendly view of the current configuration (config.toml or .env).
 func runConfigView(configDir string) error {
 	if configDir == "" {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
+	tomlPath := config.ConfigTOMLPath(configDir)
 	envPath := config.EnvPath(configDir)
+
+	tomlCfg, err := config.LoadConfigTOML(tomlPath)
+	if err != nil {
+		return fmt.Errorf("load config from %s: %w", tomlPath, err)
+	}
+	if tomlCfg != nil {
+		fmt.Println("Config directory:", configDir)
+		fmt.Println("config.toml:")
+		fmt.Printf("  [server] port=%s mode=%s\n", tomlCfg.Server.Port, tomlCfg.Server.Mode)
+		fmt.Printf("  [database] host=%s port=%s user=%s name=%s\n", tomlCfg.Database.Host, tomlCfg.Database.Port, tomlCfg.Database.User, tomlCfg.Database.Name)
+		fmt.Printf("  [redis] addr=%s db=%d\n", tomlCfg.Redis.Addr, tomlCfg.Redis.DB)
+		fmt.Printf("  [ui] api_url=%s\n", tomlCfg.UI.APIURL)
+		fmt.Printf("  [auth] default_logins=%d\n", len(tomlCfg.Auth.DefaultLogins))
+		if tomlCfg.Secrets.MigrateToken != "" {
+			fmt.Println("  [secrets] migrate_token=(set)")
+		} else {
+			fmt.Println("  [secrets] migrate_token=(not set)")
+		}
+		if tomlCfg.Secrets.DBCredentialEncryptionKey != "" {
+			fmt.Println("  [secrets] db_credential_encryption_key=(set)")
+		} else {
+			fmt.Println("  [secrets] db_credential_encryption_key=(not set)")
+		}
+		return nil
+	}
 
 	cfg, err := config.LoadEnvConfig(envPath)
 	if err != nil {
 		return fmt.Errorf("load config from %s: %w", envPath, err)
 	}
-
 	fmt.Println("Config directory:", configDir)
 	fmt.Println(".env:")
-	fmt.Printf("  SERVER_PORT=%s\n", cfg.ServerPort)
-	fmt.Printf("  SERVER_MODE=%s\n", cfg.ServerMode)
-	fmt.Printf("  DB_HOST=%s\n", cfg.DBHost)
-	fmt.Printf("  DB_PORT=%s\n", cfg.DBPort)
-	fmt.Printf("  DB_USER=%s\n", cfg.DBUser)
-	fmt.Printf("  DB_NAME=%s\n", cfg.DBName)
-	fmt.Printf("  DB_SSLMODE=%s\n", cfg.DBSSLMode)
-	fmt.Printf("  REDIS_ADDR=%s\n", cfg.RedisAddr)
-	fmt.Printf("  REDIS_DB=%s\n", cfg.RedisDB)
-	fmt.Printf("  JWT_EXPIRY_HOURS=%s\n", cfg.JWTExpiryHours)
-	fmt.Printf("  JWT_REFRESH_EXPIRY=%s\n", cfg.JWTRefreshExpiry)
+	fmt.Printf("  SERVER_PORT=%s SERVER_MODE=%s\n", cfg.ServerPort, cfg.ServerMode)
+	fmt.Printf("  DB_HOST=%s DB_PORT=%s DB_USER=%s DB_NAME=%s\n", cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBName)
+	fmt.Printf("  REDIS_ADDR=%s REDIS_DB=%s\n", cfg.RedisAddr, cfg.RedisDB)
 	if cfg.MigrateToken != "" {
 		fmt.Println("  MIGRATE_TOKEN=(set)")
 	} else {
@@ -45,24 +62,28 @@ func runConfigView(configDir string) error {
 	} else {
 		fmt.Println("  DB_CREDENTIAL_ENCRYPTION_KEY=(not set)")
 	}
-
 	return nil
 }
 
-// runConfigEdit opens the .env file in the user's editor (EDITOR/ VISUAL / nano / vi).
+// runConfigEdit opens config.toml (or .env if no config.toml) in the user's editor.
 func runConfigEdit(configDir string) error {
 	if configDir == "" {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
+	tomlPath := config.ConfigTOMLPath(configDir)
 	envPath := config.EnvPath(configDir)
 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		if err := os.WriteFile(envPath, []byte{}, 0o644); err != nil {
-			return fmt.Errorf("create env file: %w", err)
+	editPath := tomlPath
+	if _, err := os.Stat(tomlPath); os.IsNotExist(err) {
+		editPath = envPath
+		if _, err := os.Stat(envPath); os.IsNotExist(err) {
+			if err := os.WriteFile(envPath, []byte{}, 0o644); err != nil {
+				return fmt.Errorf("create env file: %w", err)
+			}
 		}
 	}
 
@@ -74,7 +95,7 @@ func runConfigEdit(configDir string) error {
 		editor = "nano"
 	}
 
-	cmd := exec.Command(editor, envPath)
+	cmd := exec.Command(editor, editPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -83,11 +104,15 @@ func runConfigEdit(configDir string) error {
 		return fmt.Errorf("editor error: %w", err)
 	}
 
-	// Basic sanity check: ensure essential fields are at least present (may be empty).
-	if _, err := config.LoadEnvConfig(envPath); err != nil {
-		return fmt.Errorf("after editing, failed to parse %s: %w", envPath, err)
+	if editPath == tomlPath {
+		if _, err := config.LoadConfigTOML(tomlPath); err != nil {
+			return fmt.Errorf("after editing, failed to parse %s: %w", tomlPath, err)
+		}
+	} else {
+		if _, err := config.LoadEnvConfig(envPath); err != nil {
+			return fmt.Errorf("after editing, failed to parse %s: %w", envPath, err)
+		}
 	}
-
 	return nil
 }
 

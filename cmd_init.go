@@ -13,8 +13,8 @@ func runInit(configDir string) error {
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
+	tomlPath := config.ConfigTOMLPath(configDir)
 	envPath := config.EnvPath(configDir)
-	configYAMLPath := config.ConfigYAMLPath(configDir)
 
 	fmt.Println("Initializing SessionDB configuration...")
 	fmt.Println()
@@ -26,10 +26,11 @@ func runInit(configDir string) error {
 		return err
 	}
 
-	// Load existing .env if present to avoid regenerating secrets
-	existing, _ := config.ReadEnv(envPath)
-	encKeyExists := existing["DB_CREDENTIAL_ENCRYPTION_KEY"] != ""
-	tokenExists := existing["MIGRATE_TOKEN"] != ""
+	// Preserve existing secrets from config.toml or .env
+	existingToml, _ := config.LoadConfigTOML(tomlPath)
+	existingEnv, _ := config.ReadEnv(envPath)
+	encKeyExists := (existingToml != nil && existingToml.Secrets.DBCredentialEncryptionKey != "") || existingEnv["DB_CREDENTIAL_ENCRYPTION_KEY"] != ""
+	tokenExists := (existingToml != nil && existingToml.Secrets.MigrateToken != "") || existingEnv["MIGRATE_TOKEN"] != ""
 
 	if !encKeyExists || !tokenExists {
 		fmt.Println("Generating secure keys...")
@@ -43,7 +44,11 @@ func runInit(configDir string) error {
 		cfg.DBCredentialEncryptionKey = key
 		fmt.Println("✓ DB_CREDENTIAL_ENCRYPTION_KEY generated")
 	} else {
-		cfg.DBCredentialEncryptionKey = existing["DB_CREDENTIAL_ENCRYPTION_KEY"]
+		if existingToml != nil {
+			cfg.DBCredentialEncryptionKey = existingToml.Secrets.DBCredentialEncryptionKey
+		} else {
+			cfg.DBCredentialEncryptionKey = existingEnv["DB_CREDENTIAL_ENCRYPTION_KEY"]
+		}
 	}
 	if !tokenExists {
 		token, err := utils.GenerateToken()
@@ -53,23 +58,29 @@ func runInit(configDir string) error {
 		cfg.MigrateToken = token
 		fmt.Println("✓ MIGRATE_TOKEN generated")
 	} else {
-		cfg.MigrateToken = existing["MIGRATE_TOKEN"]
+		if existingToml != nil {
+			cfg.MigrateToken = existingToml.Secrets.MigrateToken
+		} else {
+			cfg.MigrateToken = existingEnv["MIGRATE_TOKEN"]
+		}
 	}
 	if !encKeyExists || !tokenExists {
 		fmt.Println()
 	}
 
-	if err := config.WriteEnv(envPath, cfg); err != nil {
-		return fmt.Errorf("write .env: %w", err)
+	tomlCfg := config.EnvConfigToToml(cfg)
+	if err := config.WriteConfigTOML(tomlPath, tomlCfg); err != nil {
+		return fmt.Errorf("write config.toml: %w", err)
 	}
-	if err := config.WriteConfigYAML(configYAMLPath, cfg); err != nil {
-		return fmt.Errorf("write config.yaml: %w", err)
+	// Generate .env from TOML so systemd (deploy) and backend keep working
+	if err := config.WriteEnv(envPath, config.TomlToEnvConfig(tomlCfg)); err != nil {
+		return fmt.Errorf("write .env: %w", err)
 	}
 
 	fmt.Println("Configuration saved to:")
 	fmt.Println()
-	fmt.Println("  " + envPath)
-	fmt.Println("  " + configYAMLPath)
+	fmt.Println("  " + tomlPath)
+	fmt.Println("  ( .env generated for systemd / backend )")
 	fmt.Println()
 	return nil
 }

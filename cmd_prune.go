@@ -9,7 +9,7 @@ import (
 )
 
 // runPrune removes all SessionDB artifacts managed by scli from the host:
-// install root (all versions/current/runtime files) and config dir (.env/config.yaml/logs/pid).
+// install root (all versions/current/runtime files) and config dir (config.toml, .env, logs, pid).
 // Use force=true to confirm destructive cleanup.
 func runPrune(configDir string, force bool) error {
 	if !force {

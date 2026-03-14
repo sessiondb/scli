@@ -41,16 +41,16 @@ go build -o scli .
 
 | Command | Description |
 |--------|-------------|
-| **scli init** | Interactive prompts for DB/Redis, generates `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN`, saves `.env` and `config.yaml` |
+| **scli init** | Interactive prompts for DB/Redis, generates secrets, saves **config.toml** (single source) and generates `.env` for systemd/backend. |
 | **scli install [version]** | Download from GitHub Releases (sessiondb/service). Omit version for latest. Installs to install root (`versions/<tag>/`, `current` symlink). Use `-v` or `--verbose` for detailed logs. |
 | **scli get \<version\> [workdir]** | Same as install; use `workdir` as install root (default: current dir). |
-| **scli run [version] [workdir]** | Start server in background and follow logs. Uses **global .env** only. Ctrl+C stops the log tail; server keeps running. Use `scli stop` to stop. |
+| **scli run [version] [workdir]** | Start server in background and follow logs. Config from **config.toml** (or .env). Ctrl+C stops the log tail; server keeps running. Use `scli stop` to stop. |
 | **scli stop** | Stop the server (process started by `scli run` or the sessiondb systemd service). |
 | **scli migrate** | POST `/v1/migrate` with `X-Migrate-Token` from config (run after deploy) |
 | **scli status** | Check if server is reachable (GET /health) |
-| **scli deploy** | Generate systemd unit for bare metal. Single global `.env`; version is chosen by the `current` symlink. Uses absolute paths and `WorkingDirectory` for reliable starts. |
-| **scli reset** | Remove SessionDB install directory. Use `--all` to also remove `.env` and `config.yaml`. |
-| **scli prune --yes** | Remove **all** SessionDB artifacts from the VM: install root (all versions/current/runtime files) and config directory (`.env`, `config.yaml`, logs, pid). |
+| **scli deploy** | Generate systemd unit for bare metal. Config from **config.toml** (generates .env if needed); version from `current` symlink. |
+| **scli reset** | Remove SessionDB install directory. Use `--all` to also remove **config.toml** and `.env`. |
+| **scli prune --yes** | Remove **all** SessionDB artifacts: install root and config directory (**config.toml**, .env, logs, pid). |
 | **scli update** | Fetch the last 5 scli releases, prompt to select a version, then download and replace the current binary (self-update). |
 
 ## Install root and layout
@@ -60,7 +60,7 @@ go build -o scli .
 
 ## Reset and self-update
 
-- **scli reset** — Removes the install root’s `versions/` and `current`, and the legacy config-dir `sessiondb-install`. Use `scli reset --all` to also remove `.env` and `config.yaml` (full config reset).
+- **scli reset** — Removes the install root’s `versions/` and `current`. Use `scli reset --all` to also remove **config.toml** and `.env` (full config reset).
 - **scli prune --yes** — Destructive full cleanup. Removes the entire install root and config dir from the machine.
 - **scli update** — Fetches the latest 5 scli versions from GitHub, shows an interactive list, and after you pick one, downloads the matching binary for your OS/arch and replaces the current `scli` binary. On Windows, the new binary is written as `scli.exe.new`; replace `scli.exe` manually after closing the terminal.
 
@@ -70,28 +70,31 @@ go build -o scli .
 scli init
 scli install v1.0.1
 scli deploy --platform baremetal --output sessiondb.service
-# Ensure .env and the server binary exist at the paths printed by deploy, then:
+# Ensure config.toml (or .env) and the server binary exist at the paths printed by deploy, then:
 sudo cp sessiondb.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable sessiondb && sudo systemctl start sessiondb
 scli migrate
 scli status
 ```
 
-**Run (development, no systemd):** `scli run` starts the server in the background and tails the log file; Ctrl+C only stops the tail. Config comes from the **global .env** only. Stop with `scli stop`.
+**Run (development, no systemd):** `scli run` starts the server in the background and tails the log file; Ctrl+C only stops the tail. Config comes from **config.toml** (or .env). Stop with `scli stop`.
 
 **Version-based systemd:** One unit file; the `current` symlink points to the active version. When you run `scli install <new-version>`, the CLI restarts the systemd service so the new version runs and the previous one is stopped.
 
 ## Configuration
+
+- **Single config file (config.toml)**  
+  `scli init` creates **config.toml** in the config directory with sections: `[server]`, `[database]`, `[redis]`, `[jwt]`, `[secrets]`, `[auth]` (default_logins), `[ui]` (api_url). This file is the source of truth; scli generates `.env` from it for systemd and the backend. Edit with `scli config edit`.
 
 - **Config directory**  
   Default: `$HOME/.config/sessiondb` (or `SESSIONDB_CONFIG_DIR`).  
   Override with `--config-dir` on init, install, migrate, deploy.
 
 - **Secrets**  
-  `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN` are generated on first `scli init` and **reused** if .env already exists (no regeneration on re-run).
+  `DB_CREDENTIAL_ENCRYPTION_KEY` and `MIGRATE_TOKEN` are generated on first `scli init` and **reused** if config.toml (or .env) already has them.
 
 - **Bare metal**  
-  `scli deploy` writes a systemd unit that uses `EnvironmentFile=/path/to/.env` and `ExecStart=<install-root>/current/server/sessiondb-server`. Set `SESSIONDB_INSTALL_DIR` to override the install root if needed (default `/opt/sessiondb` when running as root).
+  `scli deploy` generates `.env` from config.toml if needed, then writes a systemd unit with `EnvironmentFile=/path/to/.env` and `ExecStart=<install-root>/current/server/sessiondb-server`.
 
 ## License
 

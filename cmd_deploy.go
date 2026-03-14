@@ -23,6 +23,7 @@ func runDeploy(configDir string, platform string, outputPath string, component s
 		configDir = config.DefaultConfigDir()
 	}
 	configDir, _ = filepath.Abs(configDir)
+	tomlPath := config.ConfigTOMLPath(configDir)
 	envPath := config.EnvPath(configDir)
 	configYAMLPath := config.ConfigYAMLPath(configDir)
 	installRoot := getInstallRoot("")
@@ -30,14 +31,18 @@ func runDeploy(configDir string, platform string, outputPath string, component s
 	workDir := filepath.Join(installRoot, "current")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		cfg, loadErr := config.LoadConfigYAML(configYAMLPath)
-		if loadErr == nil {
+		if tomlCfg, loadErr := config.LoadConfigTOML(tomlPath); loadErr == nil && tomlCfg != nil {
+			if writeErr := config.WriteEnv(envPath, config.TomlToEnvConfig(tomlCfg)); writeErr != nil {
+				return fmt.Errorf("generate .env from %s: %w", tomlPath, writeErr)
+			}
+			fmt.Printf("Generated %s from %s\n", envPath, tomlPath)
+		} else if cfg, loadErr := config.LoadConfigYAML(configYAMLPath); loadErr == nil {
 			if writeErr := config.WriteEnv(envPath, cfg); writeErr != nil {
 				return fmt.Errorf("recreate .env from %s: %w", configYAMLPath, writeErr)
 			}
 			fmt.Printf("Recreated %s from %s\n", envPath, configYAMLPath)
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: %s does not exist. Run 'scli init' first.\n", envPath)
+			fmt.Fprintf(os.Stderr, "Warning: no config found. Run 'scli init' first.\n")
 		}
 	}
 
