@@ -77,3 +77,37 @@ func min(a, b int) int {
 	return b
 }
 
+// Test_runPrune_removesInstallAndConfig verifies prune removes install root and config directory.
+func Test_runPrune_removesInstallAndConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	installRoot := filepath.Join(tmpDir, "install-root")
+	configDir := filepath.Join(tmpDir, "config-dir")
+
+	if err := os.MkdirAll(filepath.Join(installRoot, "versions", "v1.0.0"), 0o755); err != nil {
+		t.Fatalf("mkdir install versions: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installRoot, "versions", "v1.0.0", "marker.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write install marker: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(configDir, "logs"), 0o755); err != nil {
+		t.Fatalf("mkdir config logs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".env"), []byte("SERVER_PORT=8080\n"), 0o644); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("server_port: \"8080\"\n"), 0o644); err != nil {
+		t.Fatalf("write config yaml: %v", err)
+	}
+
+	t.Setenv("SESSIONDB_INSTALL_ROOT", installRoot)
+	if err := runPrune(configDir, true); err != nil {
+		t.Fatalf("runPrune error: %v", err)
+	}
+
+	if _, err := os.Stat(installRoot); !os.IsNotExist(err) {
+		t.Fatalf("expected install root to be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+		t.Fatalf("expected config dir to be removed, stat err=%v", err)
+	}
+}

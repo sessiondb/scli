@@ -61,6 +61,19 @@ func WriteConfigYAML(path string, cfg *EnvConfig) error {
 	return os.WriteFile(path, data, 0600)
 }
 
+// LoadConfigYAML reads config.yaml from path and populates EnvConfig.
+func LoadConfigYAML(path string) (*EnvConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &EnvConfig{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // EnvExists returns true if the .env file exists and contains a non-empty value for the given key.
 func EnvExists(path, key string) (bool, error) {
 	f, err := os.Open(path)

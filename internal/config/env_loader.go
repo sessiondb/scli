@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -42,4 +43,32 @@ func EnvSlice(base []string, path string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// EnvSliceFromInitFiles returns KEY=value strings for exec.Cmd.Env by loading the init-generated config.
+// It prefers .env; if .env is missing, it falls back to config.yaml and writes back .env for consistency.
+func EnvSliceFromInitFiles(base []string, configDir string) ([]string, error) {
+	envPath := EnvPath(configDir)
+	out, err := EnvSlice(base, envPath)
+	if err == nil {
+		return out, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	cfgPath := ConfigYAMLPath(configDir)
+	cfg, cfgErr := LoadConfigYAML(cfgPath)
+	if cfgErr != nil {
+		if os.IsNotExist(cfgErr) {
+			return nil, fmt.Errorf("neither %s nor %s exists; run 'scli init' first", envPath, cfgPath)
+		}
+		return nil, cfgErr
+	}
+
+	// Recreate .env from config.yaml so future commands have a single source file.
+	if writeErr := WriteEnv(envPath, cfg); writeErr != nil {
+		return nil, writeErr
+	}
+	return EnvSlice(base, envPath)
 }

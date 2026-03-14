@@ -60,20 +60,44 @@ func main() {
 		workDir, _ = filepath.Abs(workDir)
 		err = get(version, workDir)
 	case "run":
+		fs := flag.NewFlagSet("run", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")
+		_ = fs.Parse(args)
 		version := ""
-		workDir := "."
-		if len(args) >= 1 {
-			version = args[0]
+		workDir := ""
+		if fs.NArg() >= 1 {
+			version = fs.Arg(0)
 		}
-		if len(args) >= 2 {
-			workDir = args[1]
+		if fs.NArg() >= 2 {
+			workDir = fs.Arg(1)
 		}
-		if version == "" {
-			fmt.Fprintln(os.Stderr, "Usage: scli run <version> [workdir]")
-			os.Exit(1)
+		if workDir == "" {
+			workDir = getInstallRoot("")
 		}
 		workDir, _ = filepath.Abs(workDir)
-		err = run(version, workDir)
+		err = run(version, workDir, *configDir)
+	case "start":
+		fs := flag.NewFlagSet("start", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")
+		_ = fs.Parse(args)
+		version := ""
+		workDir := ""
+		if fs.NArg() >= 1 {
+			version = fs.Arg(0)
+		}
+		if fs.NArg() >= 2 {
+			workDir = fs.Arg(1)
+		}
+		if workDir == "" {
+			workDir = getInstallRoot("")
+		}
+		workDir, _ = filepath.Abs(workDir)
+		err = runStartCommand(version, workDir, *configDir)
+	case "stop":
+		fs := flag.NewFlagSet("stop", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory")
+		_ = fs.Parse(args)
+		err = runStop(*configDir)
 	case "migrate":
 		fs := flag.NewFlagSet("migrate", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory")
@@ -98,6 +122,12 @@ func main() {
 		all := fs.Bool("all", false, "Also remove .env and config.yaml")
 		_ = fs.Parse(args)
 		err = runReset(*configDir, *all)
+	case "prune":
+		fs := flag.NewFlagSet("prune", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory")
+		yes := fs.Bool("yes", false, "Confirm destructive cleanup")
+		_ = fs.Parse(args)
+		err = runPrune(*configDir, *yes)
 	case "update":
 		err = runUpdate()
 	case "resources":
@@ -148,13 +178,16 @@ func printUsage() {
 
 Commands:
   init                Interactive configuration + generate secrets, save .env and config.yaml
-  install [version]   Download from GitHub Releases (default: latest). e.g. scli install, scli install v1.0.1
-  get <version>       Same as install, extract to workdir/sessiondb (default workdir: .)
-  run <version>       Run server+UI (get if needed, inject env from sessiondb.yaml)
+  install [version]   Download from GitHub Releases (default: latest). Restarts systemd service if active.
+  get <version>       Same as install, extract to workdir (default workdir: install root)
+  run [version]       Start server in background and follow logs (uses init config). Ctrl+C stops tail only.
+  start [version]     Start latest/current version in background (or systemd if installed)
+  stop                Stop all SessionDB processes (PID file, systemd, leftovers)
   migrate             Run migrations (uses MIGRATE_TOKEN from config)
   status              Check if server is reachable
-  deploy              Generate systemd unit for bare metal (--platform baremetal)
+  deploy              Generate systemd unit for bare metal (single .env, version via current symlink)
   reset               Remove SessionDB install dir (use --all to also remove .env and config.yaml)
+  prune               Remove all SessionDB install + config data from host (requires --yes)
   update              Fetch last 5 scli versions, pick one to install (self-update)
   resources           Show installed SessionDB resources (binaries, UI, config, unit)
   logs                Show SessionDB service logs (systemd/journalctl wrapper)
@@ -163,8 +196,14 @@ Commands:
 Examples:
   scli init
   scli install v1.0.1
+  scli run
+  scli start
+  scli run v1.0.1
+  scli stop
+  scli deploy --platform baremetal
   scli reset
   scli reset --all
+  scli prune --yes
   scli update
   scli migrate
   scli status`)
