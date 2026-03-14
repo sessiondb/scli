@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"syscall"
 
 	"github.com/sessiondb/scli/internal/config"
 )
@@ -167,6 +166,7 @@ func processExists(pid int) bool {
 	if runtime.GOOS == "windows" {
 		return true
 	}
-	// Signal 0 does not kill the process but returns an error if it does not exist.
-	return syscall.Kill(pid, syscall.Signal(0)) == nil
+	// kill -0 checks process existence without sending a terminating signal.
+	cmd := exec.Command("kill", "-0", strconv.Itoa(pid))
+	return cmd.Run() == nil
 }
