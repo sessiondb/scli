@@ -96,7 +96,7 @@ func start(version string, workDir string, configDir string, followLogs bool, co
 	if component == ComponentAPI || component == ComponentAll {
 		if _, err := os.Stat(setup); os.IsNotExist(err) {
 			if version != "" {
-				if err := get(version, workDir); err != nil {
+				if err := get(version, workDir, false); err != nil {
 					return err
 				}
 				sessiondbDir = filepath.Join(workDir, "versions", version)

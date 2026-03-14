@@ -30,6 +30,7 @@ func main() {
 		fs := flag.NewFlagSet("install", flag.ExitOnError)
 		workDir := fs.String("workdir", "", "Extract to this directory (default: <config-dir>/sessiondb-install)")
 		configDir := fs.String("config-dir", "", "Config directory for default workdir")
+		force := fs.Bool("force", false, "Reinstall even if version already installed (also downloads UI binary if missing)")
 		verboseFlag := fs.Bool("verbose", false, "Print detailed logs")
 		verboseShort := fs.Bool("v", false, "Print detailed logs (short)")
 		_ = fs.Parse(args)
@@ -38,7 +39,7 @@ func main() {
 		if fs.NArg() > 0 {
 			version = fs.Arg(0)
 		}
-		err = runInstall(version, *workDir, *configDir)
+		err = runInstall(version, *workDir, *configDir, *force)
 	case "get":
 		fs := flag.NewFlagSet("get", flag.ExitOnError)
 		verboseFlag := fs.Bool("verbose", false, "Print detailed logs")
@@ -58,7 +59,7 @@ func main() {
 			os.Exit(1)
 		}
 		workDir, _ = filepath.Abs(workDir)
-		err = get(version, workDir)
+		err = get(version, workDir, false)
 	case "run":
 		fs := flag.NewFlagSet("run", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")

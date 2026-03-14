@@ -42,11 +42,55 @@ func releaseAssetNames(release *githubRelease) []string {
 	return out
 }
 
+// ensureUIBinaryForVersion downloads the UI server binary from the client release into versionDir/ui/sessiondb-ui
+// if the release contains sessiondb-ui-<os>-<arch>. Returns (true, nil) if the binary was just added, (false, nil) if already present, error if missing in release.
+func ensureUIBinaryForVersion(version string, versionDir string) (added bool, err error) {
+	uiBinPath := filepath.Join(versionDir, "ui", uiBinaryName)
+	if _, err := os.Stat(uiBinPath); err == nil {
+		return false, nil // already present
+	}
+	version = normalizeTag(version)
+	frontendRelease, err := fetchReleaseByTagFrom(sessiondbClientRepo, version)
+	if err != nil {
+		return false, fmt.Errorf("frontend release %s: %w", version, err)
+	}
+	uiBinAssetName := fmt.Sprintf("sessiondb-ui-%s-%s", runtime.GOOS, runtime.GOARCH)
+	uiBinURL := findAssetURL(frontendRelease, uiBinAssetName)
+	if uiBinURL == "" {
+		return false, fmt.Errorf("release %s does not contain %s; use a release that includes the UI binary or install with --force", version, uiBinAssetName)
+	}
+	tmpDir, err := os.MkdirTemp("", "scli-ui-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(tmpDir)
+	uiTmp := filepath.Join(tmpDir, uiBinAssetName)
+	if _, err := downloadAsset(uiBinURL, uiTmp); err != nil {
+		return false, fmt.Errorf("download UI binary: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(versionDir, "ui"), 0755); err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(uiTmp)
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(uiBinPath, data, 0755); err != nil {
+		return false, err
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] installed UI server binary to %s\n", uiBinPath)
+	}
+	return true, nil
+}
+
 // get installs the given SessionDB version from GitHub Releases into installRoot.
 // It downloads backend from sessiondb/service and frontend from sessiondb/client for the same tag,
 // verifies their checksums using the respective checksum files, extracts under versions/<tag>/,
 // writes setup.sh and sessiondb.yaml, and updates the current symlink.
-func get(version string, destDir string) error {
+// If forceReinstall is true and the version dir already exists, it is removed and reinstalled.
+// If the version is already installed and the UI binary is missing, it is downloaded and added.
+func get(version string, destDir string, forceReinstall bool) error {
 	installRoot := getInstallRoot(destDir)
 	if installRoot != destDir {
 		// destDir was explicitly provided (e.g. get v1.0.1 .) — use it as install root
@@ -87,7 +131,26 @@ func get(version string, destDir string) error {
 
 	versionDir := filepath.Join(installRoot, "versions", version)
 	if _, err := os.Stat(versionDir); err == nil {
-		return fmt.Errorf("version %s already installed at %s (remove it first to reinstall)", version, versionDir)
+		if forceReinstall {
+			if err := os.RemoveAll(versionDir); err != nil {
+				return fmt.Errorf("remove existing version dir: %w", err)
+			}
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[verbose] removed existing %s for reinstall\n", versionDir)
+			}
+		} else {
+			// Already installed: ensure UI binary if missing
+			added, err := ensureUIBinaryForVersion(version, versionDir)
+			if err != nil {
+				return fmt.Errorf("version %s already installed at %s; %w (use --force to reinstall)", version, versionDir, err)
+			}
+			if added {
+				fmt.Printf("Added UI binary to existing install at %s/ui/%s\n", versionDir, uiBinaryName)
+			} else {
+				fmt.Printf("Version %s already installed at %s (UI binary present)\n", version, versionDir)
+			}
+			return nil
+		}
 	}
 
 	backendName := backendAssetName()
