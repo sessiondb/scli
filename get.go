@@ -9,10 +9,38 @@ import (
 )
 
 const (
-	frontendAssetName       = "sessiondb-frontend-build.tar.gz"
-	backendChecksumsName    = "checksums.txt"
-	frontendChecksumsName   = "checksums-frontend.txt"
+	frontendAssetName     = "sessiondb-frontend-build.tar.gz"
+	backendChecksumsName  = "checksums.txt"
+	frontendChecksumsName = "checksums-frontend.txt"
 )
+
+// frontendAssetCandidates returns supported frontend asset names in priority order.
+func frontendAssetCandidates() []string {
+	return []string{
+		frontendAssetName,
+		fmt.Sprintf("sessiondb-ui-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH),
+		fmt.Sprintf("sessiondb-ui-%s-%s", runtime.GOOS, runtime.GOARCH),
+	}
+}
+
+// findFirstAssetURL returns the first matching asset URL and its asset name.
+func findFirstAssetURL(release *githubRelease, candidates []string) (string, string) {
+	for _, name := range candidates {
+		if url := findAssetURL(release, name); url != "" {
+			return url, name
+		}
+	}
+	return "", ""
+}
+
+// releaseAssetNames returns all asset names from a release.
+func releaseAssetNames(release *githubRelease) []string {
+	out := make([]string, 0, len(release.Assets))
+	for _, a := range release.Assets {
+		out = append(out, a.Name)
+	}
+	return out
+}
 
 // get installs the given SessionDB version from GitHub Releases into installRoot.
 // It downloads backend from sessiondb/service and frontend from sessiondb/client for the same tag,
@@ -66,14 +94,14 @@ func get(version string, destDir string) error {
 	backendURL := findAssetURL(backendRelease, backendName)
 	backendChecksumsURL := findAssetURL(backendRelease, backendChecksumsName)
 
-	frontendURL := findAssetURL(frontendRelease, frontendAssetName)
+	frontendURL, frontendAssetSelected := findFirstAssetURL(frontendRelease, frontendAssetCandidates())
 	frontendChecksumsURL := findAssetURL(frontendRelease, frontendChecksumsName)
 
 	if backendURL == "" {
 		return fmt.Errorf("asset %s not found in release %s of %s (platform %s/%s)", backendName, version, sessiondbServiceRepo, runtime.GOOS, runtime.GOARCH)
 	}
 	if frontendURL == "" {
-		return fmt.Errorf("asset %s not found in release %s of %s", frontendAssetName, version, sessiondbClientRepo)
+		return fmt.Errorf("none of frontend assets %v found in release %s of %s; available: %v", frontendAssetCandidates(), version, sessiondbClientRepo, releaseAssetNames(frontendRelease))
 	}
 
 	// Create version dir and subdirs
@@ -126,7 +154,7 @@ func get(version string, destDir string) error {
 	}
 
 	// Download frontend
-	frontendPath := filepath.Join(tmpDir, frontendAssetName)
+	frontendPath := filepath.Join(tmpDir, frontendAssetSelected)
 	frontendSHA, err := downloadAsset(frontendURL, frontendPath)
 	if err != nil {
 		return fmt.Errorf("download frontend: %w", err)
@@ -135,16 +163,31 @@ func get(version string, destDir string) error {
 		f, _ := os.Open(frontendChecksumsPath)
 		checksums, _ := parseChecksums(f)
 		f.Close()
-		if want, ok := checksums[frontendAssetName]; ok && want != "" {
+		if want, ok := checksums[frontendAssetSelected]; ok && want != "" {
 			if err := verifyChecksum(frontendPath, want); err != nil {
 				return fmt.Errorf("frontend checksum: %w", err)
 			}
 		}
 	} else if verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] no frontend checksums, skipping frontend verification (sha256: %s)\n", frontendSHA)
+		fmt.Fprintf(os.Stderr, "[verbose] no frontend checksums for %s, skipping frontend verification (sha256: %s)\n", frontendAssetSelected, frontendSHA)
 	}
-	if err := extractTarGzip(frontendPath, filepath.Join(versionDir, "ui")); err != nil {
-		return fmt.Errorf("extract frontend: %w", err)
+	if strings.HasSuffix(frontendAssetSelected, ".tar.gz") {
+		if err := extractTarGzip(frontendPath, filepath.Join(versionDir, "ui")); err != nil {
+			return fmt.Errorf("extract frontend: %w", err)
+		}
+	} else {
+		// Binary-style frontend artifact (mapped per platform); keep it for runtime integrations.
+		uiBinPath := filepath.Join(versionDir, "ui", "sessiondb-ui")
+		data, err := os.ReadFile(frontendPath)
+		if err != nil {
+			return fmt.Errorf("read frontend binary: %w", err)
+		}
+		if err := os.WriteFile(uiBinPath, data, 0755); err != nil {
+			return fmt.Errorf("write frontend binary: %w", err)
+		}
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[verbose] installed frontend binary to %s\n", uiBinPath)
+		}
 	}
 
 	// Write setup.sh and sessiondb.yaml

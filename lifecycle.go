@@ -63,7 +63,18 @@ func tryRestartSystemdAfterInstall() {
 	if runtime.GOOS != "linux" {
 		return
 	}
+	if !systemdUnitInstalled() {
+		return
+	}
 	active := systemdServiceActive()
+	if !active {
+		// Do not auto-start a stopped unit after install; keep existing service state.
+		return
+	}
+	if os.Geteuid() != 0 {
+		fmt.Fprintf(os.Stderr, "Installed new version; restart service with: sudo systemctl restart %s\n", systemdUnitName)
+		return
+	}
 	if active {
 		if err := stopSystemdService(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not stop sessiondb service: %v\n", err)
