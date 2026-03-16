@@ -105,8 +105,15 @@ func runConfigEdit(configDir string) error {
 	}
 
 	if editPath == tomlPath {
-		if _, err := config.LoadConfigTOML(tomlPath); err != nil {
+		tomlCfg, err := config.LoadConfigTOML(tomlPath)
+		if err != nil {
 			return fmt.Errorf("after editing, failed to parse %s: %w", tomlPath, err)
+		}
+		if tomlCfg != nil {
+			if err := config.WriteEnv(envPath, config.TomlToEnvConfig(tomlCfg)); err != nil {
+				return fmt.Errorf("regenerate .env from config.toml: %w", err)
+			}
+			fmt.Println("Regenerated .env from config.toml")
 		}
 	} else {
 		if _, err := config.LoadEnvConfig(envPath); err != nil {
@@ -115,4 +122,3 @@ func runConfigEdit(configDir string) error {
 	}
 	return nil
 }
-

@@ -47,6 +47,8 @@ func runDeploy(configDir string, platform string, outputPath string, component s
 	}
 
 	writeUnit := func(outPath, desc, execPath string) error {
+		// SESSIONDB_CONFIG_DIR so backend and UI read config.toml directly; .env still generated for override.
+		envLine := "SESSIONDB_CONFIG_DIR=" + configDir
 		unit := `[Unit]
 Description=` + desc + `
 After=network.target
@@ -54,6 +56,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=` + workDir + `
+Environment=` + envLine + `
 EnvironmentFile=` + envPath + `
 ExecStart=` + execPath + `
 Restart=on-failure

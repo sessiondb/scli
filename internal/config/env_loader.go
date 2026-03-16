@@ -47,6 +47,7 @@ func EnvSlice(base []string, path string) ([]string, error) {
 
 // EnvSliceFromInitFiles returns KEY=value strings for exec.Cmd.Env by loading the init-generated config.
 // Prefers config.toml (single source of truth); if missing, falls back to .env then config.yaml.
+// Whenever config.toml is loaded, .env is regenerated from it so they stay in sync.
 func EnvSliceFromInitFiles(base []string, configDir string) ([]string, error) {
 	tomlPath := ConfigTOMLPath(configDir)
 	tomlCfg, err := LoadConfigTOML(tomlPath)
@@ -54,6 +55,8 @@ func EnvSliceFromInitFiles(base []string, configDir string) ([]string, error) {
 		return nil, err
 	}
 	if tomlCfg != nil {
+		envPath := EnvPath(configDir)
+		_ = WriteEnv(envPath, TomlToEnvConfig(tomlCfg)) // keep .env in sync whenever toml is used
 		return EnvSliceFromToml(base, tomlCfg), nil
 	}
 

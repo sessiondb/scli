@@ -82,5 +82,8 @@ func runInit(configDir string) error {
 	fmt.Println("  " + tomlPath)
 	fmt.Println("  ( .env generated for systemd / backend )")
 	fmt.Println()
+	fmt.Println("When you use 'scli run' or 'scli start', SESSIONDB_CONFIG_DIR is set automatically to this directory.")
+	fmt.Println("You do not need to set SESSIONDB_CONFIG_DIR manually. Deploy-generated systemd units set it too.")
+	fmt.Println()
 	return nil
 }

@@ -101,6 +101,24 @@ func main() {
 		configDir := fs.String("config-dir", "", "Config directory")
 		_ = fs.Parse(args)
 		err = runStop(*configDir)
+	case "restart":
+		fs := flag.NewFlagSet("restart", flag.ExitOnError)
+		configDir := fs.String("config-dir", "", "Config directory (default: $HOME/.config/sessiondb)")
+		component := fs.String("component", "api", "Component to restart: api, ui, or all")
+		_ = fs.Parse(args)
+		version := ""
+		workDir := ""
+		if fs.NArg() >= 1 {
+			version = fs.Arg(0)
+		}
+		if fs.NArg() >= 2 {
+			workDir = fs.Arg(1)
+		}
+		if workDir == "" {
+			workDir = getInstallRoot("")
+		}
+		workDir, _ = filepath.Abs(workDir)
+		err = runRestart(version, workDir, *configDir, *component)
 	case "migrate":
 		fs := flag.NewFlagSet("migrate", flag.ExitOnError)
 		configDir := fs.String("config-dir", "", "Config directory")
@@ -188,6 +206,7 @@ Commands:
   run [version]       Start server in background and follow logs (uses init config). Ctrl+C stops tail only.
   start [version]     Start latest/current version in background (or systemd if installed)
   stop                Stop all SessionDB processes (PID file, systemd, leftovers)
+  restart [version]   Stop then start (same options as start; use --component api|ui|all)
   migrate             Run migrations (uses MIGRATE_TOKEN from config)
   status              Check if server is reachable
   deploy              Generate systemd unit for bare metal (config from config.toml / .env, version via current symlink)
@@ -203,6 +222,7 @@ Examples:
   scli install v1.0.1
   scli run
   scli start
+  scli restart --component all
   scli run v1.0.1
   scli stop
   scli deploy --platform baremetal
