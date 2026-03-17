@@ -96,6 +96,16 @@ Override with `--config-dir` on init, install, migrate, deploy.
 - **Bare metal**  
 `scli deploy` generates `.env` from config.toml if needed, then writes a systemd unit with `EnvironmentFile=/path/to/.env` and `ExecStart=<install-root>/current/server/sessiondb-server`.
 
+## Tooling documentation
+
+For a **step-by-step guide** to working with scli and a **troubleshooting section** (common issues, how to check them, and how to find solutions), see:
+
+- **[docs/tooling.md](docs/tooling.md)** — Tooling guide: workflow, issues & solutions, and how to find the solution for new issues.
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for our community standards, and [SECURITY.md](SECURITY.md) for how to report security issues.
+
 ## License
 
 Same as SessionDB project.
